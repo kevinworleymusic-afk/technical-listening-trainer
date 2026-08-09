@@ -4,6 +4,24 @@ Python-based technical critical-listening training platform for audio-system eva
 
 ---
 
+## Quick Start
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/kevinworleymusic-afk/technical-listening-trainer.git
+cd technical-listening-trainer
+
+# 2. Install dependencies
+pip install numpy scipy soundfile
+
+# 3. Launch the app
+python listening_test.py
+```
+
+> **Note:** Requires Python 3.x and macOS (audio playback uses `afplay`). `tkinter` ships with the standard Python installer — no separate install needed.
+
+---
+
 ## Current module — EQ / Band Identification
 
 The first fully implemented module trains the ear to detect and identify parametric EQ changes applied to a user-supplied audio source.
