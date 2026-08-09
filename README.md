@@ -2,47 +2,111 @@
 
 Python-based technical critical-listening training platform for audio-system evaluation, psychoacoustics, DSP development, and automotive-audio preparation.
 
-## Current status
+---
 
-The first working module focuses on EQ / band identification. It currently supports blind A/B assignment, randomized frequency selection, selectable 1-octave and 1/3-octave frequency sets, and selectable positive/negative gain values.
+## Current module — EQ / Band Identification
 
-The codebase now separates module logic so users can download focused components:
-- `modules/frequency_module.py` for frequency/EQ options and DSP trial generation.
-- `modules/additional_module.py` for non-frequency extension parameter handling.
-- `audio_processing.py` as a compatibility facade re-exporting frequency APIs.
+The first fully implemented module trains the ear to detect and identify parametric EQ changes applied to a user-supplied audio source.
+
+### Audio source controls
+
+- Load any WAV, AIFF, or FLAC file as the reference signal
+- Interactive waveform display with a visual selection overlay
+- Manual section selection: click once for start, click again for end
+- Auto-pick loud section: energy-based sliding-window detection runs in a background thread and animates a spinner while searching
+- Configurable section length (3 s – 30 s) used by the auto-picker
+- Clear section to revert to the full file
+
+### EQ / filter controls
+
+| Control | Details |
+|---|---|
+| Band mode | 1 Octave (8 center frequencies, 125 Hz – 16 kHz) or 1/3 Octave (22 center frequencies, 125 Hz – 16 kHz) |
+| Frequency range | Constrain randomized frequency selection to a user-defined min–max span |
+| Cut count | 0 – 3 simultaneous cut filters per trial |
+| Boost count | 0 – 3 simultaneous boost filters per trial (combined max of 3 across cuts and boosts) |
+| Gain direction | Boost and Cut, Boost Only, or Cut Only |
+| Cut range | Randomization constrained to a selected dB range (−1 dB – −12 dB) |
+| Boost range | Randomization constrained to a selected dB range (+1 dB – +12 dB) |
+| Exact cut / Exact boost | Pin a specific dB value to lock in for cut or boost |
+| Q value | 0.5, 1, 2, 4, or 8 — selectable and lockable per trial |
+| Randomization mode | Randomize Unlocked, Randomize All, or Use Selected Values |
+
+Individual parameters can be locked with checkboxes so they stay fixed while everything else randomizes.
+
+### DSP engine
+
+- Second-order peaking EQ (IIR biquad) applied with `scipy.signal.lfilter`
+- Coefficients computed analytically from Audio EQ Cookbook formulas
+- Per-filter peak frequency and gain validated via `scipy.signal.freqz` after each filter is designed
+- Passthrough path for no-change trials (bit-exact copy of source)
+- Up to 3 independent peaking filters chained in a single trial, each with its own frequency, gain, and Q
+
+### Test modes
+
+**Mode 1 – Detect Change**
+
+- Blind A/B comparison: Sample A and Sample B are randomly assigned to the reference and modified signals each trial
+- User selects Yes or No (did A and B sound different?), then clicks Submit Answer
+- Scored as Hit, Miss, False Alarm, or Correct Reject
+- Configurable no-change probability: 0 %, 25 %, 50 %, or 75 % of trials present no EQ change
+
+**Mode 2 – Identify Setting**
+
+- Identification target is selectable: Frequency, Q, or Gain
+- One dropdown answer selector per active filter (up to 3), labeled by the number of active changes
+- User picks the answer value(s) and clicks Check Answers
+- Partial credit: matched count vs. total target count is shown when only some answers are correct
+- Answers are compared using unordered set matching
+
+### Study / match tools
+
+- **Render & play reference example** — renders a deterministic study copy with the current locked settings so you can hear what the target sounds like before practicing
+- **Render & play answer guess** — substitutes your guessed value(s) into the current trial's filters and renders an audio comparison so you can hear how close your answer sounds
+
+### Session tracking and export
+
+- Live status panel: displays all selected controls, lock states, active trial parameters, and last response feedback in real time
+- Per-trial result log: trial ID, timestamp, test mode, band mode, filter count, filter definitions, user response, expected response, outcome, and feedback
+- Session statistics: answered count, correct count, accuracy %, and detection breakdown (Hits, Misses, False Alarms, Correct Rejects) plus mode-2 matched target count
+- Score display updated after each response
+- Export session to CSV (standard file-save dialog, timestamped default filename)
+- Reset session stats and clear generated audio files for a clean start
+- New session button removes all generated WAV files from the working directory
+
+---
 
 ## Project structure
 
-- `app/` – GUI and trial-control code
-- `dsp/` – signal-processing functions used to generate listening stimuli
-- `docs/` – project briefs, architecture notes, methodology, and design documentation
-- `modules/` – listening-module definitions and future module-specific logic
-- `results/` – generated listening-test results and analysis outputs (data files should remain privacy-safe)
-- `tests/` – automated verification of DSP, randomization, scoring, and experiment logic
+```
+technical-listening-trainer/
+├── app/
+│   └── common_gui.py       # Shared Tkinter layout helpers and theme constants
+├── dsp/                    # Future home for reusable DSP stimulus-generation code
+├── docs/                   # Project briefs, architecture notes, methodology documents
+├── modules/
+│   ├── frequency_module.py # EQ frequency/gain/Q options and DSP trial generation
+│   └── additional_module.py# Generic helper for non-frequency module parameters
+├── results/                # Generated session CSV exports and analysis outputs
+├── tests/                  # Automated tests for DSP, randomization, scoring, and experiment logic
+├── audio_processing.py     # Compatibility facade re-exporting frequency_module APIs
+└── listening_test.py       # Main GUI application entry point
+```
 
-## Shared system features planned
+---
 
-Blind A/B randomization, adjustable difficulty, adaptive threshold testing, scoring, trial count, session logging, CSV export, session history, accuracy by condition, threshold estimation, and results summaries/plots.
+## Dependencies
 
-## Listening-module roadmap
+- Python 3.x
+- [NumPy](https://numpy.org/) — array operations and waveform math
+- [SciPy](https://scipy.org/) — IIR filter design (`signal.lfilter`, `signal.freqz`)
+- [soundfile](https://python-soundfile.readthedocs.io/) — audio file read/write (WAV, AIFF, FLAC)
+- [tkinter](https://docs.python.org/3/library/tkinter.html) — GUI (included in standard Python on macOS and most Linux distributions)
 
-1. EQ / Band Identification
-2. Tonal Attributes
-3. Noise & Artifacts
-4. Spatial Balance
-5. Reverberation
-6. Level & Channel Balance
-7. Time Alignment / Delay
-8. Stereo Imaging & Localization
-9. Polarity & Phase
-10. Crossover Integration
-11. Bass / Subwoofer Integration
-12. Resonance Detection
-13. Distortion Detection
-14. SNR & Masking
-15. Vehicle-Noise Masking
-16. Dynamics / Compression
-17. Multichannel Fault Identification
-18. Combined Diagnostic Listening
+Audio playback uses `afplay` (macOS system command). See [FUTURE_VERSIONS.md](FUTURE_VERSIONS.md) for cross-platform playback plans.
 
-The long-term goal is an extensible technical-listening platform where each auditory module plugs into a shared experiment engine for stimulus generation, randomization, scoring, adaptive difficulty, logging, and analysis.
+---
+
+## Future versions
+
+Planned listening modules, shared engine features, and platform improvements are tracked in **[FUTURE_VERSIONS.md](FUTURE_VERSIONS.md)**.
