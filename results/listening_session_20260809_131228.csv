@@ -1,0 +1,3 @@
+trial_id,timestamp,mode,score_detail,correct,outcome,user_response,expected_response,matched_count,target_count,band_mode,has_change,filter_count,feedback
+1,2026-08-09T13:10:13,Mode 2,0/1,False,no_match,[1000],[800],0,1,1/3 Octave,True,1,Incorrect: matched 0/1. Expected [800].
+2,2026-08-09T13:12:18,Mode 2,1/1,True,full_match,[1000],[1000],1,1,1/3 Octave,True,1,Correct: matched all 1 answers.
