@@ -6,6 +6,11 @@ Python-based technical critical-listening training platform for audio-system eva
 
 The first working module focuses on EQ / band identification. It currently supports blind A/B assignment, randomized frequency selection, selectable 1-octave and 1/3-octave frequency sets, and selectable positive/negative gain values.
 
+The codebase now separates module logic so users can download focused components:
+- `modules/frequency_module.py` for frequency/EQ options and DSP trial generation.
+- `modules/additional_module.py` for non-frequency extension parameter handling.
+- `audio_processing.py` as a compatibility facade re-exporting frequency APIs.
+
 ## Project structure
 
 - `app/` – GUI and trial-control code

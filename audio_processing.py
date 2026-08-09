@@ -1,46 +1,24 @@
-import numpy as np
-import soundfile as sf
-from scipy import signal
+"""Compatibility facade for legacy imports.
 
+Primary frequency-module logic now lives in `modules/frequency_module.py`.
+Keep importing from this file if existing scripts depend on it.
+"""
 
-def create_modified_audio(frequency, gain_db, q=2):
-    input_file = "Tracy_Chapman_Fast_car.wav"
-    output_file = "modified.wav"
-
-    audio, sample_rate = sf.read(input_file)
-
-    A = 10 ** (gain_db / 40)
-    w0 = 2 * np.pi * frequency / sample_rate
-    alpha = np.sin(w0) / (2 * q)
-
-    b0 = 1 + alpha * A
-    b1 = -2 * np.cos(w0)
-    b2 = 1 - alpha * A
-
-    a0 = 1 + alpha / A
-    a1 = -2 * np.cos(w0)
-    a2 = 1 - alpha / A
-
-    b = np.array([b0, b1, b2]) / a0
-    a = np.array([a0, a1, a2]) / a0
-
-    # Filter Checks
-
-    w, h = signal.freqz(b, a, worN=4096, fs=sample_rate)
-    peak_index = np.argmax(np.abs(h))
-    peak_frequency = w[peak_index]
-    peak_gain_db = 20 * np.log10(np.abs(h[peak_index]))
-
-    print("Peak frequency:", peak_frequency)
-    print("Peak gain dB:", peak_gain_db)
-
-    #End of Function
-    modified = signal.lfilter(b, a, audio, axis=0)
-
-    sf.write(output_file, modified, sample_rate)
-
-    difference = np.max(np.abs(modified - audio))
-    print("Maximum sample difference:", difference)
-
-    print("Created:", output_file)
+from modules.frequency_module import BAND_MODES
+from modules.frequency_module import BOOST_GAIN_OPTIONS
+from modules.frequency_module import CUT_GAIN_OPTIONS
+from modules.frequency_module import FILTER_COUNT_OPTIONS
+from modules.frequency_module import GAIN_DIRECTION_OPTIONS
+from modules.frequency_module import GAIN_OPTIONS
+from modules.frequency_module import OCTAVE_FREQUENCIES
+from modules.frequency_module import Q_OPTIONS
+from modules.frequency_module import RANDOMIZATION_MODES
+from modules.frequency_module import SAMPLE_OPTIONS
+from modules.frequency_module import THIRD_OCTAVE_FREQUENCIES
+from modules.frequency_module import create_modified_audio
+from modules.frequency_module import create_passthrough_audio
+from modules.frequency_module import create_trial_audio
+from modules.frequency_module import get_frequency_options
+from modules.frequency_module import get_practice_gain_options
+from modules.frequency_module import resolve_trial_parameters
 
