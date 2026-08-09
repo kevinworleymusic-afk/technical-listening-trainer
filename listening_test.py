@@ -50,6 +50,7 @@ selected_section_file = "selected_section.wav"
 trial_reference_file = "trial_reference.wav"
 trial_modified_file = "trial_modified.wav"
 reference_file = ""
+SESSION_EXPORT_DIR = "results"
 
 TEST_MODE_OPTIONS = [
     "Mode 1: Detect Change",
@@ -106,6 +107,7 @@ current_trial_id = 0
 current_trial_scored = False
 last_feedback = "No answer checked yet"
 session_results = []
+session_events = []
 waveform_mono_data = None
 waveform_sample_rate = None
 waveform_duration_seconds = 0.0
@@ -315,6 +317,7 @@ def get_section_status_text():
 
 def get_session_summary_lines():
     """Build lightweight session stats for the current run."""
+    total_trials = sum(1 for event in session_events if event.get("event_type") == "trial_created")
     total_answers = len(session_results)
     correct_answers = sum(1 for result in session_results if result["correct"])
 
@@ -336,6 +339,7 @@ def get_session_summary_lines():
 
     return [
         "Session Stats",
+        f"Trials Created: {total_trials}",
         f"Answered: {total_answers} | Correct: {correct_answers} | Accuracy: {accuracy_text}",
         f"Detection: Hits={hits}, Misses={misses}, False Alarms={false_alarms}, Correct Rejects={correct_rejects}",
         f"Identification: Trials={len(mode2_results)}, Matched Targets={mode2_match_text}",
@@ -373,10 +377,22 @@ def build_current_trial_result_base():
     }
 
 
+def record_session_event(event_type, details=None):
+    """Append a session-level event to support richer export history."""
+    event = build_current_trial_result_base()
+    event["event_type"] = event_type
+    if details:
+        event.update(details)
+
+    session_events.append(event)
+    update_session_stats_label()
+
+
 def record_session_result(result):
     """Append a scored response to the session log and refresh stats."""
     global current_trial_scored
 
+    record_session_event("trial_answered", dict(result))
     session_results.append(result)
     current_trial_scored = True
     update_session_stats_label()
@@ -385,8 +401,10 @@ def record_session_result(result):
 def reset_session_stats():
     """Clear the in-memory session results and refresh the summary."""
     global session_results
+    global session_events
 
     session_results = []
+    session_events = []
     update_session_stats_label()
     set_feedback("Session stats reset.", MUTED_TEXT_COLOR)
 
@@ -423,10 +441,14 @@ def export_session_results():
         set_feedback("No session results to export yet.", MUTED_TEXT_COLOR)
         return
 
+    export_dir = os.path.join(os.path.dirname(__file__), SESSION_EXPORT_DIR)
+    os.makedirs(export_dir, exist_ok=True)
+
     default_name = f"listening_session_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     export_path = filedialog.asksaveasfilename(
         title="Export Session Results",
         defaultextension=".csv",
+        initialdir=export_dir,
         initialfile=default_name,
         filetypes=[("CSV Files", "*.csv")],
     )
@@ -434,11 +456,54 @@ def export_session_results():
     if not export_path:
         return
 
-    fieldnames = sorted({key for result in session_results for key in result.keys()})
-    with open(export_path, "w", newline="", encoding="utf-8") as output_file:
-        writer = csv.DictWriter(output_file, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(session_results)
+    fieldnames = [
+        "trial_id",
+        "timestamp",
+        "mode",
+        "score_detail",
+        "correct",
+        "outcome",
+        "user_response",
+        "expected_response",
+        "matched_count",
+        "target_count",
+        "band_mode",
+        "has_change",
+        "filter_count",
+        "feedback",
+    ]
+
+    export_rows = []
+    for result in session_results:
+        mode_text = result.get("test_mode", "")
+        is_mode_1 = mode_text == TEST_MODE_OPTIONS[0]
+        export_rows.append(
+            {
+                "trial_id": result.get("trial_id", ""),
+                "timestamp": result.get("timestamp", ""),
+                "mode": "Mode 1" if is_mode_1 else "Mode 2",
+                "score_detail": result.get("score_detail", ""),
+                "correct": result.get("correct", ""),
+                "outcome": result.get("outcome", ""),
+                "user_response": result.get("user_response", ""),
+                "expected_response": result.get("expected_response", ""),
+                "matched_count": "" if is_mode_1 else result.get("matched_count", ""),
+                "target_count": "" if is_mode_1 else result.get("target_count", ""),
+                "band_mode": result.get("band_mode", ""),
+                "has_change": result.get("has_change", ""),
+                "filter_count": result.get("filter_count", ""),
+                "feedback": result.get("feedback", ""),
+            }
+        )
+
+    try:
+        with open(export_path, "w", newline="", encoding="utf-8") as output_file:
+            writer = csv.DictWriter(output_file, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(export_rows)
+    except OSError as exc:
+        set_feedback(f"Export failed: {exc}", "firebrick")
+        return
 
     set_feedback(f"Exported session results to {os.path.basename(export_path)}.")
 
@@ -585,6 +650,7 @@ def check_detection_response(user_detected_change):
 
     result = build_current_trial_result_base()
     result["user_response"] = "yes" if user_detected_change else "no"
+    result["expected_response"] = "yes" if current_trial_has_change else "no"
     if user_detected_change == current_trial_has_change:
         if current_trial_has_change:
             set_feedback("Correct: there is a change in this trial.")
@@ -602,6 +668,7 @@ def check_detection_response(user_detected_change):
             result["outcome"] = "false_alarm"
         result["correct"] = False
 
+    result["score_detail"] = "1/1" if result["correct"] else "0/1"
     result["feedback"] = last_feedback
     record_session_result(result)
     reset_pending_detection_answer()
@@ -633,7 +700,14 @@ def check_identification_response():
     result["expected_response"] = repr(expected_sorted)
     result["matched_count"] = correct_matches
     result["target_count"] = answer_count
+    result["score_detail"] = f"{correct_matches}/{answer_count}"
     result["correct"] = user_sorted == expected_sorted
+    if result["correct"]:
+        result["outcome"] = "full_match"
+    elif correct_matches > 0:
+        result["outcome"] = "partial_match"
+    else:
+        result["outcome"] = "no_match"
 
     if user_sorted == expected_sorted:
         set_feedback(f"Correct: matched all {answer_count} answers.")
@@ -1334,6 +1408,15 @@ def create_trial():
     print("Filters:", current_filters)
     print("Has change:", current_trial_has_change)
     print("Band mode:", current_band_mode)
+    record_session_event(
+        "trial_created",
+        {
+            "trial_filter_count": len(current_filters),
+            "trial_filters": repr(current_filters),
+            "trial_has_change": current_trial_has_change,
+            "randomization_mode": selected_randomization_mode.get(),
+        },
+    )
     update_identification_answer_rows()
     reset_pending_detection_answer()
     set_identification_submit_enabled(False)
@@ -1901,6 +1984,16 @@ mode2_options_label = create_section_label(
     pady=(8, 2),
 )
 
+mode2_options_hint_label = tk.Label(
+    response_section,
+    text="Set Identify target in Open Settings > Trial Settings.",
+    fg=MUTED_TEXT_COLOR,
+    bg=response_section.cget("bg"),
+    justify="left",
+    wraplength=760,
+)
+mode2_options_hint_label.pack(anchor="w", padx=30, pady=(0, 6))
+
 # Mode 1 asks for simple change detection. Mode 2 switches to specific setting
 # identification using the target and value controls below.
 answer_label = create_section_label(
@@ -1930,13 +2023,6 @@ submit_detection_button = tk.Button(
     text="Submit Answer",
     command=submit_detection_answer,
     state="disabled",
-)
-
-identification_target_row, identification_target_label, identification_target_menu = create_labeled_option_row(
-    response_section,
-    label_text="Identify:",
-    variable=selected_identification_target,
-    options=IDENTIFICATION_TARGET_OPTIONS,
 )
 
 identification_prompt_label = tk.Label(
@@ -2176,6 +2262,13 @@ randomization_mode_row, randomization_mode_label, randomization_mode_menu = crea
     variable=selected_randomization_mode,
     options=RANDOMIZATION_MODES,
     pady=(0, 10),
+)
+
+identification_target_row, identification_target_label, identification_target_menu = create_labeled_option_row(
+    settings_left_column,
+    label_text="Mode 2 Identify:",
+    variable=selected_identification_target,
+    options=IDENTIFICATION_TARGET_OPTIONS,
 )
 
 # Band mode chooses the master frequency list that all other frequency controls use.

@@ -111,10 +111,10 @@ Recommended progression:
 ### Session tracking and export
 
 - Live status panel: displays all selected controls, lock states, active trial parameters, and last response feedback in real time
-- Per-trial result log: trial ID, timestamp, test mode, band mode, filter count, filter definitions, user response, expected response, outcome, and feedback
+- Per-answer session log: captures scored responses with trial metadata and score detail (for example, 2/3 in Mode 2)
 - Session statistics: answered count, correct count, accuracy %, and detection breakdown (Hits, Misses, False Alarms, Correct Rejects) plus mode-2 matched target count
 - Score display updated after each response
-- Export session to CSV (standard file-save dialog, timestamped default filename)
+- Export session to CSV (standard file-save dialog, timestamped default filename, defaults to `results/`; exports scored-answer rows)
 - Reset session stats and clear generated audio files for a clean start
 - New session button removes all generated WAV files from the working directory
 

@@ -8,10 +8,9 @@ This manual documents every current user-facing setting in the application (`lis
 - Main-screen settings:
   - **Test Mode**
   - **Change/No-Change Mix** (Mode 1)
-  - **Identify** target (Mode 2)
 - Full settings window:
   - Click **Open Settings**
-  - Tabs: **Trial Settings**, **Session Tracking**, **Waveform Selector**, **Boost / Cut**
+  - Tabs: **Trial Settings**, **Session Tracking**, **Waveform Selector**, **Boost / Cut**, **Automobile**
   - Click **Save And Close** to hide window while keeping selected values
 
 ---
@@ -37,7 +36,8 @@ This manual documents every current user-facing setting in the application (`lis
   - Disabled when Mode 2 is active
 
 ### 3) Identify target (Mode 2)
-- Label: **Identify**
+- Location: **Settings > Trial Settings**
+- Label: **Mode 2 Identify**
 - Options: `Frequency`, `Q`, `Gain`
 - Default: `Frequency`
 - Effect:
@@ -196,8 +196,8 @@ Count-rule behavior:
 These are session controls rather than randomization parameters, but they are part of the current settings window:
 
 - **Start New Session**: clears score data and removes generated audio files (`modified.wav`, `match_guess.wav`, `memorization.wav`, `selected_section.wav`) if present
-- **Reset Session Stats**: clears in-memory scoring/session results
-- **Export Session Results**: writes current session results to CSV via save dialog
+- **Reset Session Stats**: clears in-memory scoring/session results and trial event history
+- **Export Session Results**: writes scored session answers to CSV via save dialog (defaults to `results/`)
 
 ---
 
