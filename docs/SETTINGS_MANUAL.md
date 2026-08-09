@@ -195,9 +195,18 @@ Count-rule behavior:
 
 These are session controls rather than randomization parameters, but they are part of the current settings window:
 
-- **Start New Session**: clears score data and removes generated audio files (`modified.wav`, `match_guess.wav`, `memorization.wav`, `selected_section.wav`) if present
+- **Start New Session**: clears score data and invalidates in-session generated previews/trials
 - **Reset Session Stats**: clears in-memory scoring/session results and trial event history
-- **Export Session Results**: writes scored session answers to CSV via save dialog (defaults to `results/`)
+- **Export Session Results**: writes scored session answers to CSV via save dialog (defaults to `results/`), then appends analysis rows including:
+  - Total success rate
+  - Total parameter-match rate
+  - Frequency-by-frequency performance
+  - Strength/weakness summaries across frequencies and tested parameters (mode, identify target, band mode, gain direction, filter count, change state, automobile conditions, tested gains, tested Q values)
+
+Runtime artifact behavior:
+- Generated trial/example/section audio is written to a temporary runtime folder instead of the project root.
+- Temporary generated audio is automatically deleted when the app closes.
+- Legacy generated root-level files from older versions (`modified.wav`, `match_guess.wav`, `memorization.wav`, `selected_section.wav`, `trial_reference.wav`, `trial_modified.wav`) are no longer used and can be deleted safely.
 
 ---
 

@@ -1,7 +1,10 @@
 import csv
+import atexit
 import os
+import shutil
 import tkinter as tk
 import subprocess
+import tempfile
 import threading
 from datetime import datetime
 from tkinter import filedialog
@@ -43,12 +46,13 @@ from audio_processing import (
     resolve_trial_parameters,
 )
 
-modified_file = "modified.wav"
-match_file = "match_guess.wav"
-memorization_file = "memorization.wav"
-selected_section_file = "selected_section.wav"
-trial_reference_file = "trial_reference.wav"
-trial_modified_file = "trial_modified.wav"
+RUNTIME_AUDIO_DIR = tempfile.mkdtemp(prefix="critical_listening_")
+modified_file = os.path.join(RUNTIME_AUDIO_DIR, "modified.wav")
+match_file = os.path.join(RUNTIME_AUDIO_DIR, "match_guess.wav")
+memorization_file = os.path.join(RUNTIME_AUDIO_DIR, "memorization.wav")
+selected_section_file = os.path.join(RUNTIME_AUDIO_DIR, "selected_section.wav")
+trial_reference_file = os.path.join(RUNTIME_AUDIO_DIR, "trial_reference.wav")
+trial_modified_file = os.path.join(RUNTIME_AUDIO_DIR, "trial_modified.wav")
 reference_file = ""
 SESSION_EXPORT_DIR = "results"
 
@@ -120,6 +124,15 @@ auto_select_spinner_after_id = None
 auto_select_spinner_index = 0
 auto_select_spinner_frames = ["|", "/", "-", "\\"]
 auto_select_done_flash_after_id = None
+
+
+def cleanup_runtime_audio_dir():
+    """Delete temporary runtime audio artifacts for this app session."""
+    if os.path.isdir(RUNTIME_AUDIO_DIR):
+        shutil.rmtree(RUNTIME_AUDIO_DIR, ignore_errors=True)
+
+
+atexit.register(cleanup_runtime_audio_dir)
 
 
 # =========================
@@ -365,16 +378,239 @@ def update_session_stats_label():
 
 def build_current_trial_result_base():
     """Capture common trial metadata for session logging/export."""
+    tested_frequencies = [str(change.get("frequency", "")) for change in current_filters if "frequency" in change]
+    tested_gains = [str(change.get("gain", "")) for change in current_filters if "gain" in change]
+    tested_q_values = [str(change.get("q", "")) for change in current_filters if "q" in change]
+
     return {
         "trial_id": current_trial_id,
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "test_mode": selected_test_mode.get(),
+        "identification_target": selected_identification_target.get(),
         "band_mode": current_band_mode,
+        "gain_direction": selected_gain_direction.get(),
+        "randomization_mode": selected_randomization_mode.get(),
+        "automobile_monitoring": selected_automobile_monitoring.get(),
+        "automobile_cabin": selected_automobile_cabin.get(),
+        "automobile_ac": selected_automobile_ac.get(),
+        "automobile_loudness": selected_automobile_loudness.get(),
         "has_change": current_trial_has_change,
         "filter_count": len(current_filters),
+        "tested_frequencies": "|".join(tested_frequencies),
+        "tested_gains": "|".join(tested_gains),
+        "tested_q_values": "|".join(tested_q_values),
         "filters": repr(current_filters),
         "feedback": last_feedback,
     }
+
+
+def _score_ratio_parts(result):
+    """Return matched/total parts from score detail for weighted analytics."""
+    score_detail = str(result.get("score_detail", "")).strip()
+    if "/" in score_detail:
+        left, right = score_detail.split("/", 1)
+        try:
+            matched = int(left)
+            total = int(right)
+            if total > 0:
+                return matched, total
+        except ValueError:
+            pass
+
+    return (1, 1) if result.get("correct") else (0, 1)
+
+
+def _parse_pipe_values(raw_value):
+    """Split pipe-delimited values emitted in exported result metadata."""
+    if not raw_value:
+        return []
+
+    return [token for token in str(raw_value).split("|") if token]
+
+
+def _format_percent(numerator, denominator):
+    """Render percentage text with one decimal point."""
+    if denominator <= 0:
+        return "n/a"
+    return f"{(numerator / denominator) * 100:.1f}%"
+
+
+def build_session_analysis_rows(results):
+    """Build summary/analysis rows appended after detailed session rows."""
+    if not results:
+        return []
+
+    total_attempts = len(results)
+    total_correct = sum(1 for result in results if result.get("correct"))
+    total_matched = 0
+    total_targets = 0
+    for result in results:
+        matched, targets = _score_ratio_parts(result)
+        total_matched += matched
+        total_targets += targets
+
+    rows = [
+        {
+            "analysis_section": "overall",
+            "analysis_label": "total_success_rate",
+            "analysis_value": _format_percent(total_correct, total_attempts),
+            "analysis_success_rate": _format_percent(total_correct, total_attempts),
+            "analysis_attempts": total_attempts,
+            "analysis_correct": total_correct,
+        },
+        {
+            "analysis_section": "overall",
+            "analysis_label": "total_parameter_match_rate",
+            "analysis_value": _format_percent(total_matched, total_targets),
+            "analysis_success_rate": _format_percent(total_matched, total_targets),
+            "analysis_attempts": total_targets,
+            "analysis_correct": total_matched,
+        },
+    ]
+
+    frequency_stats = {}
+    parameter_groups = {
+        "mode": {},
+        "identification_target": {},
+        "band_mode": {},
+        "gain_direction": {},
+        "filter_count": {},
+        "has_change": {},
+        "automobile_monitoring": {},
+        "automobile_cabin": {},
+        "automobile_ac": {},
+        "automobile_loudness": {},
+        "tested_gain": {},
+        "tested_q": {},
+    }
+
+    def update_bucket(container, bucket_key, trial_correct, trial_matched, trial_targets):
+        if bucket_key in {None, "", "None"}:
+            return
+        bucket = container.setdefault(
+            str(bucket_key),
+            {"attempts": 0, "correct": 0, "matched": 0, "targets": 0},
+        )
+        bucket["attempts"] += 1
+        bucket["correct"] += 1 if trial_correct else 0
+        bucket["matched"] += trial_matched
+        bucket["targets"] += trial_targets
+
+    for result in results:
+        trial_correct = bool(result.get("correct"))
+        trial_matched, trial_targets = _score_ratio_parts(result)
+
+        for frequency in _parse_pipe_values(result.get("tested_frequencies")):
+            update_bucket(frequency_stats, frequency, trial_correct, trial_matched, trial_targets)
+
+        mode_label = "Mode 1" if result.get("test_mode") == TEST_MODE_OPTIONS[0] else "Mode 2"
+        update_bucket(parameter_groups["mode"], mode_label, trial_correct, trial_matched, trial_targets)
+        update_bucket(parameter_groups["identification_target"], result.get("identification_target"), trial_correct, trial_matched, trial_targets)
+        update_bucket(parameter_groups["band_mode"], result.get("band_mode"), trial_correct, trial_matched, trial_targets)
+        update_bucket(parameter_groups["gain_direction"], result.get("gain_direction"), trial_correct, trial_matched, trial_targets)
+        update_bucket(parameter_groups["filter_count"], result.get("filter_count"), trial_correct, trial_matched, trial_targets)
+        update_bucket(parameter_groups["has_change"], result.get("has_change"), trial_correct, trial_matched, trial_targets)
+        update_bucket(parameter_groups["automobile_monitoring"], result.get("automobile_monitoring"), trial_correct, trial_matched, trial_targets)
+        update_bucket(parameter_groups["automobile_cabin"], result.get("automobile_cabin"), trial_correct, trial_matched, trial_targets)
+        update_bucket(parameter_groups["automobile_ac"], result.get("automobile_ac"), trial_correct, trial_matched, trial_targets)
+        update_bucket(parameter_groups["automobile_loudness"], result.get("automobile_loudness"), trial_correct, trial_matched, trial_targets)
+
+        for gain_value in _parse_pipe_values(result.get("tested_gains")):
+            update_bucket(parameter_groups["tested_gain"], gain_value, trial_correct, trial_matched, trial_targets)
+        for q_value in _parse_pipe_values(result.get("tested_q_values")):
+            update_bucket(parameter_groups["tested_q"], q_value, trial_correct, trial_matched, trial_targets)
+
+    sorted_frequency_items = sorted(
+        frequency_stats.items(),
+        key=lambda item: int(item[0]) if str(item[0]).isdigit() else str(item[0]),
+    )
+
+    for frequency_label, stats in sorted_frequency_items:
+        rows.append(
+            {
+                "analysis_section": "frequency",
+                "analysis_label": f"{frequency_label} Hz",
+                "analysis_value": _format_percent(stats["matched"], stats["targets"]),
+                "analysis_success_rate": _format_percent(stats["correct"], stats["attempts"]),
+                "analysis_attempts": stats["attempts"],
+                "analysis_correct": stats["correct"],
+            }
+        )
+
+    frequency_rank = sorted(
+        sorted_frequency_items,
+        key=lambda item: (
+            (item[1]["correct"] / item[1]["attempts"]) if item[1]["attempts"] else 0,
+            item[1]["attempts"],
+        ),
+    )
+    if frequency_rank:
+        weakest_frequency = frequency_rank[0]
+        strongest_frequency = frequency_rank[-1]
+        rows.append(
+            {
+                "analysis_section": "frequency",
+                "analysis_label": "strengths_vs_weaknesses",
+                "analysis_strength": (
+                    f"Strongest: {strongest_frequency[0]} Hz "
+                    f"({_format_percent(strongest_frequency[1]['correct'], strongest_frequency[1]['attempts'])}, "
+                    f"{strongest_frequency[1]['correct']}/{strongest_frequency[1]['attempts']})"
+                ),
+                "analysis_weakness": (
+                    f"Weakest: {weakest_frequency[0]} Hz "
+                    f"({_format_percent(weakest_frequency[1]['correct'], weakest_frequency[1]['attempts'])}, "
+                    f"{weakest_frequency[1]['correct']}/{weakest_frequency[1]['attempts']})"
+                ),
+            }
+        )
+
+    for group_name, buckets in parameter_groups.items():
+        if not buckets:
+            continue
+
+        sorted_items = sorted(
+            buckets.items(),
+            key=lambda item: (
+                (item[1]["correct"] / item[1]["attempts"]) if item[1]["attempts"] else 0,
+                item[1]["attempts"],
+            ),
+        )
+
+        for bucket_label, stats in sorted(
+            buckets.items(),
+            key=lambda item: str(item[0]),
+        ):
+            rows.append(
+                {
+                    "analysis_section": f"parameter:{group_name}",
+                    "analysis_label": str(bucket_label),
+                    "analysis_value": _format_percent(stats["matched"], stats["targets"]),
+                    "analysis_success_rate": _format_percent(stats["correct"], stats["attempts"]),
+                    "analysis_attempts": stats["attempts"],
+                    "analysis_correct": stats["correct"],
+                }
+            )
+
+        weakest_item = sorted_items[0]
+        strongest_item = sorted_items[-1]
+        rows.append(
+            {
+                "analysis_section": f"parameter:{group_name}",
+                "analysis_label": "strengths_vs_weaknesses",
+                "analysis_strength": (
+                    f"Strongest: {strongest_item[0]} "
+                    f"({_format_percent(strongest_item[1]['correct'], strongest_item[1]['attempts'])}, "
+                    f"{strongest_item[1]['correct']}/{strongest_item[1]['attempts']})"
+                ),
+                "analysis_weakness": (
+                    f"Weakest: {weakest_item[0]} "
+                    f"({_format_percent(weakest_item[1]['correct'], weakest_item[1]['attempts'])}, "
+                    f"{weakest_item[1]['correct']}/{weakest_item[1]['attempts']})"
+                ),
+            }
+        )
+
+    return rows
 
 
 def record_session_event(event_type, details=None):
@@ -467,10 +703,28 @@ def export_session_results():
         "expected_response",
         "matched_count",
         "target_count",
+        "identification_target",
         "band_mode",
+        "gain_direction",
+        "randomization_mode",
+        "automobile_monitoring",
+        "automobile_cabin",
+        "automobile_ac",
+        "automobile_loudness",
         "has_change",
         "filter_count",
+        "tested_frequencies",
+        "tested_gains",
+        "tested_q_values",
         "feedback",
+        "analysis_section",
+        "analysis_label",
+        "analysis_value",
+        "analysis_success_rate",
+        "analysis_attempts",
+        "analysis_correct",
+        "analysis_strength",
+        "analysis_weakness",
     ]
 
     export_rows = []
@@ -489,23 +743,46 @@ def export_session_results():
                 "expected_response": result.get("expected_response", ""),
                 "matched_count": "" if is_mode_1 else result.get("matched_count", ""),
                 "target_count": "" if is_mode_1 else result.get("target_count", ""),
+                "identification_target": "" if is_mode_1 else result.get("identification_target", ""),
                 "band_mode": result.get("band_mode", ""),
+                "gain_direction": result.get("gain_direction", ""),
+                "randomization_mode": result.get("randomization_mode", ""),
+                "automobile_monitoring": result.get("automobile_monitoring", ""),
+                "automobile_cabin": result.get("automobile_cabin", ""),
+                "automobile_ac": result.get("automobile_ac", ""),
+                "automobile_loudness": result.get("automobile_loudness", ""),
                 "has_change": result.get("has_change", ""),
                 "filter_count": result.get("filter_count", ""),
+                "tested_frequencies": result.get("tested_frequencies", ""),
+                "tested_gains": result.get("tested_gains", ""),
+                "tested_q_values": result.get("tested_q_values", ""),
                 "feedback": result.get("feedback", ""),
             }
         )
+
+    analysis_rows = build_session_analysis_rows(session_results)
+
 
     try:
         with open(export_path, "w", newline="", encoding="utf-8") as output_file:
             writer = csv.DictWriter(output_file, fieldnames=fieldnames)
             writer.writeheader()
+            if analysis_rows:
+                writer.writerow({})
+                writer.writerows(analysis_rows)
             writer.writerows(export_rows)
     except OSError as exc:
         set_feedback(f"Export failed: {exc}", "firebrick")
         return
 
     set_feedback(f"Exported session results to {os.path.basename(export_path)}.")
+
+
+def on_app_close():
+    """Ensure playback stops and runtime artifacts are cleaned up on close."""
+    stop_audio()
+    cleanup_runtime_audio_dir()
+    root.destroy()
 
 
 def get_active_filter_count():
@@ -1658,6 +1935,7 @@ def save_and_close_settings_window():
 # Practice ranges are separate from exact frequency/gain locks so users can
 # constrain randomized drills without pinning one exact answer value.
 root = create_root_window("Critical Listening Study", "1180x900")
+root.protocol("WM_DELETE_WINDOW", on_app_close)
 
 main_canvas = tk.Canvas(root, bg=root.cget("bg"), highlightthickness=0)
 main_scrollbar = tk.Scrollbar(root, orient="vertical", command=main_canvas.yview)
