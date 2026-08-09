@@ -128,3 +128,7 @@ Audio playback uses `afplay` (macOS system command). See [FUTURE_VERSIONS.md](FU
 ## Future versions
 
 Planned listening modules, shared engine features, and platform improvements are tracked in **[FUTURE_VERSIONS.md](FUTURE_VERSIONS.md)**.
+
+## Settings manual
+
+For a complete, current reference of all configurable controls in the app, see **[docs/SETTINGS_MANUAL.md](docs/SETTINGS_MANUAL.md)**.
