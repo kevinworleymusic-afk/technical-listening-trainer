@@ -2,10 +2,12 @@
 
 This folder holds project planning and engineering documentation for the Technical Listening Trainer.
 
-Planned contents include:
-- project brief
-- software architecture notes
-- listening-test methodology
-- module specifications
-- adaptive-threshold design notes
-- validation and verification notes
+Current contents include:
+- AI Copilot implementation worklog and feature-change log
+- ChatGPT-assisted prototype development trail
+- project-level documentation index and planning notes
+
+Automobile simulation documentation coverage includes:
+- automobile DSP conditioning (cabin profile, AC noise, loudness presets)
+- one-click automobile presets and UI behavior
+- current validation notes for automobile-related implementation updates

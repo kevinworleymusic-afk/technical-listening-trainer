@@ -82,6 +82,32 @@ Individual parameters can be locked with checkboxes so they stay fixed while eve
 - **Render & play reference example** — renders a deterministic study copy with the current locked settings so you can hear what the target sounds like before practicing
 - **Render & play answer guess** — substitutes your guessed value(s) into the current trial's filters and renders an audio comparison so you can hear how close your answer sounds
 
+### Automobile listening simulation
+
+- Dedicated Automobile settings tab with one-click preset workflow
+- Enable/disable automobile conditioning for trial playback
+- Cabin-condition profiles: Off, Parked Cabin, City Streets, Highway Cruise, Windows Open
+- Air-conditioning overlays: Off, Low, Medium, High
+- Loudness presets: Reference, Comfort, Commute, Loud
+- One-click presets: Neutral Cabin, City Commute, Highway With AC, Windows Open Loud
+- Fair A/B behavior: both Sample A and Sample B use the same conditioning seed in a trial so only the EQ change differs
+
+### Automobile quick start
+
+1. Open **Settings** and go to the **Automobile** tab.
+2. Set **Automobile Simulation** to **On**.
+3. Choose a preset and click **Apply Preset**:
+	- **City Commute**: balanced daily-driving profile for general practice
+	- **Highway With AC**: stronger masking for tougher discrimination
+	- **Windows Open Loud**: most difficult profile with aggressive masking
+4. Generate a new trial and compare **Sample A** vs **Sample B**.
+5. If needed, switch to another preset and generate a fresh trial.
+
+Recommended progression:
+- Start with **Neutral Cabin** to calibrate your hearing to the workflow.
+- Move to **City Commute** for regular drills.
+- Use **Highway With AC** and **Windows Open Loud** for advanced training.
+
 ### Session tracking and export
 
 - Live status panel: displays all selected controls, lock states, active trial parameters, and last response feedback in real time
@@ -103,7 +129,7 @@ technical-listening-trainer/
 ├── dsp/                    # Future home for reusable DSP stimulus-generation code
 ├── docs/                   # Project briefs, architecture notes, methodology documents
 ├── modules/
-│   ├── frequency_module.py # EQ frequency/gain/Q options and DSP trial generation
+│   ├── frequency_module.py # EQ frequency/gain/Q options, trial generation, and automobile conditioning DSP
 │   └── additional_module.py# Generic helper for non-frequency module parameters
 ├── results/                # Generated session CSV exports and analysis outputs
 ├── tests/                  # Automated tests for DSP, randomization, scoring, and experiment logic

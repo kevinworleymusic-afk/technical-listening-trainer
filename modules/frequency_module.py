@@ -18,12 +18,53 @@ BAND_MODES = ["1 Octave", "1/3 Octave"]
 RANDOMIZATION_MODES = ["Randomize Unlocked", "Randomize All", "Use Selected Values"]
 SAMPLE_OPTIONS = ["A", "B"]
 
+AUTOMOBILE_CABIN_OPTIONS = [
+    "Off",
+    "Parked Cabin",
+    "City Streets",
+    "Highway Cruise",
+    "Windows Open",
+]
+AUTOMOBILE_AC_OPTIONS = ["Off", "Low", "Medium", "High"]
+AUTOMOBILE_LOUDNESS_OPTIONS = ["Reference", "Comfort", "Commute", "Loud"]
+
 OCTAVE_FREQUENCIES = [125, 250, 500, 1000, 2000, 4000, 8000, 16000]
 THIRD_OCTAVE_FREQUENCIES = [
     125, 160, 200, 250, 315, 400, 500, 630, 800,
     1000, 1250, 1600, 2000, 2500, 3150,
     4000, 5000, 6300, 8000, 10000, 12500, 16000,
 ]
+
+
+_CABIN_NOISE_RMS_BY_PROFILE = {
+    "Off": 0.0,
+    "Parked Cabin": 0.004,
+    "City Streets": 0.012,
+    "Highway Cruise": 0.02,
+    "Windows Open": 0.035,
+}
+
+_CABIN_LOWPASS_HZ_BY_PROFILE = {
+    "Off": 9000,
+    "Parked Cabin": 6500,
+    "City Streets": 5200,
+    "Highway Cruise": 4200,
+    "Windows Open": 3000,
+}
+
+_AC_NOISE_RMS_BY_LEVEL = {
+    "Off": 0.0,
+    "Low": 0.003,
+    "Medium": 0.006,
+    "High": 0.01,
+}
+
+_LOUDNESS_GAIN_DB_BY_MODE = {
+    "Reference": 0.0,
+    "Comfort": 2.0,
+    "Commute": 5.0,
+    "Loud": 8.0,
+}
 
 
 # =========================
@@ -307,14 +348,133 @@ def _design_peaking_filter(sample_rate, frequency, gain_db, q):
     return b, a
 
 
-def create_passthrough_audio(input_file, output_file):
+def _limit_signal_peak(audio, peak=0.98):
+    """Keep output inside a stable peak target to avoid clipping."""
+    maximum = float(np.max(np.abs(audio)))
+    if maximum <= peak or maximum == 0.0:
+        return audio
+    return audio * (peak / maximum)
+
+
+def _mix_weighted_noise(audio_shape, noise_components):
+    """Build a weighted sum of white-noise components for mono/stereo signals."""
+    if not noise_components:
+        return np.zeros(audio_shape, dtype=np.float32)
+
+    mixed = np.zeros(audio_shape, dtype=np.float32)
+    for noise_component, weight in noise_components:
+        mixed += noise_component.astype(np.float32) * float(weight)
+    return mixed
+
+
+def _generate_cabin_noise(sample_count, sample_rate, profile):
+    """Generate low-frequency weighted road/cabin noise for one profile."""
+    target_rms = _CABIN_NOISE_RMS_BY_PROFILE.get(profile, 0.0)
+    if target_rms <= 0.0:
+        return np.zeros(sample_count, dtype=np.float32)
+
+    white = np.random.normal(0.0, 1.0, sample_count).astype(np.float32)
+    lowpass_hz = _CABIN_LOWPASS_HZ_BY_PROFILE.get(profile, 5000)
+    normalized_cutoff = max(0.01, min(0.95, lowpass_hz / (sample_rate / 2.0)))
+    b, a = signal.butter(2, normalized_cutoff, btype="low")
+    rumble = signal.lfilter(b, a, white)
+
+    rms = float(np.sqrt(np.mean(rumble**2)))
+    if rms > 0.0:
+        rumble = rumble * (target_rms / rms)
+
+    return rumble.astype(np.float32)
+
+
+def _generate_ac_noise(sample_count, sample_rate, ac_level):
+    """Generate band-limited fan/vent noise for AC simulation."""
+    target_rms = _AC_NOISE_RMS_BY_LEVEL.get(ac_level, 0.0)
+    if target_rms <= 0.0:
+        return np.zeros(sample_count, dtype=np.float32)
+
+    white = np.random.normal(0.0, 1.0, sample_count).astype(np.float32)
+    highpass_hz = 600.0
+    lowpass_hz = 8000.0
+    hp_norm = max(0.001, min(0.95, highpass_hz / (sample_rate / 2.0)))
+    lp_norm = max(0.01, min(0.95, lowpass_hz / (sample_rate / 2.0)))
+    b_hp, a_hp = signal.butter(1, hp_norm, btype="high")
+    b_lp, a_lp = signal.butter(1, lp_norm, btype="low")
+    shaped = signal.lfilter(b_hp, a_hp, white)
+    shaped = signal.lfilter(b_lp, a_lp, shaped)
+
+    rms = float(np.sqrt(np.mean(shaped**2)))
+    if rms > 0.0:
+        shaped = shaped * (target_rms / rms)
+
+    return shaped.astype(np.float32)
+
+
+def apply_automobile_environment(audio, sample_rate, environment_settings=None, noise_seed=None):
+    """Apply loudness and cabin/AC masking to emulate in-car listening."""
+    if not environment_settings:
+        return audio
+
+    cabin_profile = environment_settings.get("cabin_profile", "Off")
+    ac_level = environment_settings.get("ac_level", "Off")
+    loudness_mode = environment_settings.get("loudness_mode", "Reference")
+
+    if (
+        cabin_profile == "Off"
+        and ac_level == "Off"
+        and loudness_mode == "Reference"
+    ):
+        return audio
+
+    if noise_seed is not None:
+        np.random.seed(int(noise_seed))
+
+    processed = np.array(audio, dtype=np.float32, copy=True)
+    gain_db = _LOUDNESS_GAIN_DB_BY_MODE.get(loudness_mode, 0.0)
+    processed *= 10 ** (gain_db / 20.0)
+
+    sample_count = processed.shape[0]
+    cabin_noise = _generate_cabin_noise(sample_count, sample_rate, cabin_profile)
+    ac_noise = _generate_ac_noise(sample_count, sample_rate, ac_level)
+
+    if processed.ndim == 1:
+        processed += cabin_noise + ac_noise
+    else:
+        channels = processed.shape[1]
+        per_channel_noise = _mix_weighted_noise(
+            processed.shape,
+            [
+                (np.repeat(cabin_noise[:, None], channels, axis=1), 1.0),
+                (np.repeat(ac_noise[:, None], channels, axis=1), 1.0),
+            ],
+        )
+        processed += per_channel_noise
+
+    processed = _limit_signal_peak(processed, peak=0.98)
+    return processed.astype(audio.dtype, copy=False)
+
+
+def create_passthrough_audio(input_file, output_file, environment_settings=None, noise_seed=None):
     """Write an unchanged copy of the source audio for no-change trials."""
     audio, sample_rate = sf.read(input_file)
-    sf.write(output_file, audio, sample_rate)
+    rendered = apply_automobile_environment(
+        audio,
+        sample_rate,
+        environment_settings=environment_settings,
+        noise_seed=noise_seed,
+    )
+    sf.write(output_file, rendered, sample_rate)
     print("Created unchanged trial:", output_file)
 
 
-def create_modified_audio(input_file, output_file, frequency_or_filters, gain_db=None, q=None):
+def create_modified_audio(
+    input_file,
+    output_file,
+    frequency_or_filters,
+    gain_db=None,
+    q=None,
+    environment_settings=None,
+    noise_seed=None,
+):
     """Apply one or more peaking EQ filters and write a modified audio file."""
     audio, sample_rate = sf.read(input_file)
 
@@ -345,6 +505,13 @@ def create_modified_audio(input_file, output_file, frequency_or_filters, gain_db
         print("Peak gain dB:", peak_gain_db)
 
         modified = signal.lfilter(b, a, modified, axis=0)
+
+    modified = apply_automobile_environment(
+        modified,
+        sample_rate,
+        environment_settings=environment_settings,
+        noise_seed=noise_seed,
+    )
 
     sf.write(output_file, modified, sample_rate)
 
@@ -377,6 +544,8 @@ def create_trial_audio(
     randomization_mode,
     allow_no_change=False,
     no_change_probability=0.5,
+    environment_settings=None,
+    noise_seed=None,
 ):
     """Create one frequency-module trial and render audio stimulus."""
     params = resolve_trial_parameters(selected_values, lock_values, randomization_mode)
@@ -385,7 +554,12 @@ def create_trial_audio(
     resolved_probability = probability if probability is not None else random.random()
 
     if allow_no_change and random.random() < resolved_probability:
-        create_passthrough_audio(input_file, output_file)
+        create_passthrough_audio(
+            input_file,
+            output_file,
+            environment_settings=environment_settings,
+            noise_seed=noise_seed,
+        )
         params["modified_sample"] = modified_sample
         params["has_change"] = False
         params["filters"] = []
@@ -395,8 +569,27 @@ def create_trial_audio(
         input_file,
         output_file,
         params["filters"],
+        environment_settings=environment_settings,
+        noise_seed=noise_seed,
     )
 
     params["modified_sample"] = modified_sample
     params["has_change"] = True
     return params
+
+
+def create_automobile_conditioned_audio(
+    input_file,
+    output_file,
+    environment_settings=None,
+    noise_seed=None,
+):
+    """Render a source file through the automobile environment settings only."""
+    audio, sample_rate = sf.read(input_file)
+    rendered = apply_automobile_environment(
+        audio,
+        sample_rate,
+        environment_settings=environment_settings,
+        noise_seed=noise_seed,
+    )
+    sf.write(output_file, rendered, sample_rate)

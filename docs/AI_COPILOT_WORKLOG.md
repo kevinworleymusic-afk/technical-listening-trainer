@@ -6,7 +6,7 @@ This document records the major Copilot-driven commands (feature requests), what
 - Project: critical-listening-study
 - Main implementation file: listening_test.py
 - Supporting modules: modules/frequency_module.py, app/common_gui.py, audio_processing.py
-- Validation method used repeatedly: python3 -m py_compile
+- Validation methods used repeatedly: python3 -m py_compile and editor diagnostics checks
 
 ## Chronological Command and Result Log
 
@@ -179,6 +179,26 @@ This document records the major Copilot-driven commands (feature requests), what
 - Files:
   - listening_test.py
 
+23. Command: Add automobile-specific listening simulation settings
+- Result:
+  - Added Automobile tab with toggles for in-car emulation controls.
+  - Added configurable cabin conditions, AC noise levels, and loudness presets.
+  - Wired automobile status fields into the live status panel.
+  - Integrated rendering path so trials and comparison audio can be conditioned for car-like listening.
+- Files:
+  - listening_test.py
+  - modules/frequency_module.py
+  - audio_processing.py
+
+24. Command: Add one-click automobile presets
+- Result:
+  - Added one-click preset selector and Apply Preset button in the Automobile tab.
+  - Added preset bundles for common scenarios (Neutral Cabin, City Commute, Highway With AC, Windows Open Loud).
+  - Added conditioned-file invalidation so changing automobile settings clears stale conditioned trial files.
+  - Added lazy conditioned re-render on sample playback when simulation is enabled and conditioned files are missing.
+- Files:
+  - listening_test.py
+
 ## Files Created or Significantly Refactored
 - listening_test.py (major GUI/controller rewrite and feature integration)
 - modules/frequency_module.py (new moduleized trial + DSP logic)
@@ -192,6 +212,9 @@ Across changes, edits were repeatedly validated using:
 - python3 -m py_compile listening_test.py
 - python3 -m py_compile listening_test.py modules/frequency_module.py audio_processing.py
 - Editor diagnostics checks (no errors after each patch cycle)
+
+Latest automobile/preset updates were validated with:
+- Editor diagnostics checks on listening_test.py, modules/frequency_module.py, and audio_processing.py (no errors)
 
 ## Notes
 - This worklog captures major Copilot requests and resulting code outcomes.

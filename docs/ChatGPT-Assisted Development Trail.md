@@ -357,6 +357,28 @@ separately in the Copilot development trail.
 
 ---
 
+# Post-Prototype Additions: Automobile Listening Simulation
+
+After the original prototype phases documented above, the project added an
+automobile listening simulation section to better emulate in-car evaluation
+conditions during EQ training.
+
+Implemented additions include:
+
+- Automobile settings tab in the GUI
+- Cabin-condition profiles (parked, city, highway, windows-open styles)
+- AC noise overlays (off/low/medium/high)
+- Loudness presets for practical in-car monitoring levels
+- One-click preset application for common scenarios
+- Conditioned A/B rendering that applies the same noise seed to both samples
+  so trial fairness is preserved
+
+These additions are implemented in the current codebase and tracked in the
+Copilot worklog as part of the ongoing transition from prototype workflow to
+structured, module-oriented development.
+
+---
+
 # AI-Assistance Disclosure
 
 ChatGPT was used during the prototype period as an interactive development

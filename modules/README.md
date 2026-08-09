@@ -5,13 +5,15 @@ This folder now contains standalone module files so users can download only what
 ## Current downloadable modules
 
 1. `frequency_module.py`
-- Purpose: Frequency/EQ-specific trial logic and DSP.
-- Includes: band options, frequency pools, gain/Q options, randomization rules, trial parameter resolution, and modified-audio rendering.
+- Purpose: Frequency/EQ-specific trial logic and DSP, including automobile listening conditioning.
+- Includes: band options, frequency pools, gain/Q options, randomization rules, trial parameter resolution, modified-audio rendering, and cabin/AC/loudness simulation layers.
 - Primary API:
 	- `get_frequency_options(band_mode)`
 	- `resolve_trial_parameters(selected_values, lock_values, randomization_mode)`
-	- `create_trial_audio(input_file, output_file, selected_values, lock_values, randomization_mode)`
-	- `create_modified_audio(input_file, output_file, frequency, gain_db, q)`
+	- `create_trial_audio(input_file, output_file, selected_values, lock_values, randomization_mode, allow_no_change=False, no_change_probability=0.5, environment_settings=None, noise_seed=None)`
+	- `create_modified_audio(input_file, output_file, frequency_or_filters, gain_db=None, q=None, environment_settings=None, noise_seed=None)`
+	- `create_automobile_conditioned_audio(input_file, output_file, environment_settings=None, noise_seed=None)`
+	- `apply_automobile_environment(audio, sample_rate, environment_settings=None, noise_seed=None)`
 
 2. `additional_module.py`
 - Purpose: Non-frequency extension parameter resolution for future installs.
@@ -22,7 +24,7 @@ This folder now contains standalone module files so users can download only what
 
 ## Compatibility note
 
-`audio_processing.py` re-exports frequency-module APIs so existing imports keep working.
+`audio_processing.py` re-exports frequency-module APIs (including automobile options/helpers) so existing imports keep working.
 
 ## Simple import examples
 

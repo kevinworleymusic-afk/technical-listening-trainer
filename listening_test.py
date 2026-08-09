@@ -25,6 +25,9 @@ from app.common_gui import set_option_menu_state
 
 from audio_processing import (
     BAND_MODES,
+    AUTOMOBILE_AC_OPTIONS,
+    AUTOMOBILE_CABIN_OPTIONS,
+    AUTOMOBILE_LOUDNESS_OPTIONS,
     BOOST_GAIN_OPTIONS,
     CUT_GAIN_OPTIONS,
     FILTER_COUNT_OPTIONS,
@@ -32,6 +35,7 @@ from audio_processing import (
     GAIN_OPTIONS,
     Q_OPTIONS,
     RANDOMIZATION_MODES,
+    create_automobile_conditioned_audio,
     create_modified_audio,
     create_trial_audio,
     get_frequency_options,
@@ -43,6 +47,8 @@ modified_file = "modified.wav"
 match_file = "match_guess.wav"
 memorization_file = "memorization.wav"
 selected_section_file = "selected_section.wav"
+trial_reference_file = "trial_reference.wav"
+trial_modified_file = "trial_modified.wav"
 reference_file = ""
 
 TEST_MODE_OPTIONS = [
@@ -53,6 +59,39 @@ IDENTIFICATION_TARGET_OPTIONS = ["Frequency", "Q", "Gain"]
 NO_CHANGE_RATE_OPTIONS = ["Random", "0%", "25%", "50%", "75%"]
 MAX_FILTERS_PER_TRIAL = 3
 SECTION_LENGTH_OPTIONS = [3, 5, 8, 10, 15, 20, 30]
+AUTOMOBILE_MONITOR_OPTIONS = ["Off", "On"]
+AUTOMOBILE_PRESET_OPTIONS = [
+    "Neutral Cabin",
+    "City Commute",
+    "Highway With AC",
+    "Windows Open Loud",
+]
+AUTOMOBILE_PRESET_SETTINGS = {
+    "Neutral Cabin": {
+        "monitoring": "On",
+        "cabin": "Parked Cabin",
+        "ac": "Off",
+        "loudness": "Reference",
+    },
+    "City Commute": {
+        "monitoring": "On",
+        "cabin": "City Streets",
+        "ac": "Low",
+        "loudness": "Comfort",
+    },
+    "Highway With AC": {
+        "monitoring": "On",
+        "cabin": "Highway Cruise",
+        "ac": "Medium",
+        "loudness": "Commute",
+    },
+    "Windows Open Loud": {
+        "monitoring": "On",
+        "cabin": "Windows Open",
+        "ac": "Off",
+        "loudness": "Loud",
+    },
+}
 
 audio_process = None
 modified_sample = None
@@ -101,6 +140,70 @@ def format_no_change_rate_for_status():
     return f"{value}%"
 
 
+def build_automobile_environment_settings():
+    """Collect active automobile simulation options from Tk variables."""
+    return {
+        "enabled": selected_automobile_monitoring.get() == "On",
+        "cabin_profile": selected_automobile_cabin.get(),
+        "ac_level": selected_automobile_ac.get(),
+        "loudness_mode": selected_automobile_loudness.get(),
+    }
+
+
+def automobile_environment_is_active():
+    """Return True when automobile simulation should be applied."""
+    settings = build_automobile_environment_settings()
+    return settings["enabled"]
+
+
+def ensure_conditioned_trial_files(source_file, noise_seed):
+    """Render conditioned source and modified files with matching noise seed."""
+    if not automobile_environment_is_active():
+        return
+
+    settings = build_automobile_environment_settings()
+    create_automobile_conditioned_audio(
+        source_file,
+        trial_reference_file,
+        environment_settings=settings,
+        noise_seed=noise_seed,
+    )
+    create_automobile_conditioned_audio(
+        modified_file,
+        trial_modified_file,
+        environment_settings=settings,
+        noise_seed=noise_seed,
+    )
+
+
+def clear_conditioned_trial_files():
+    """Remove rendered automobile-conditioned trial files if they exist."""
+    for conditioned_file in [trial_reference_file, trial_modified_file]:
+        if os.path.exists(conditioned_file):
+            os.remove(conditioned_file)
+
+
+def invalidate_conditioned_trial_audio(*_):
+    """Drop conditioned files so next trial/playback uses current automobile settings."""
+    clear_conditioned_trial_files()
+
+
+def apply_automobile_preset():
+    """Apply one-click automobile profile to all automobile controls."""
+    preset_name = selected_automobile_preset.get()
+    preset_settings = AUTOMOBILE_PRESET_SETTINGS.get(preset_name)
+    if not preset_settings:
+        set_feedback("Choose a valid automobile preset first.", MUTED_TEXT_COLOR)
+        return
+
+    selected_automobile_monitoring.set(preset_settings["monitoring"])
+    selected_automobile_cabin.set(preset_settings["cabin"])
+    selected_automobile_ac.set(preset_settings["ac"])
+    selected_automobile_loudness.set(preset_settings["loudness"])
+    sync_automobile_control_states()
+    set_feedback(f"Applied automobile preset: {preset_name}.", MUTED_TEXT_COLOR)
+
+
 def update_status_label():
     """Render selected controls, lock states, and active trial values."""
     if "status_label" not in globals():
@@ -114,6 +217,10 @@ def update_status_label():
         f"Section={get_section_status_text()} | "
         f"Test={selected_test_mode.get()} | "
         f"NoChange={format_no_change_rate_for_status()} | "
+        f"AutoMon={selected_automobile_monitoring.get()} | "
+        f"Cabin={selected_automobile_cabin.get()} | "
+        f"AC={selected_automobile_ac.get()} | "
+        f"Loudness={selected_automobile_loudness.get()} | "
         f"Mode={selected_randomization_mode.get()} | "
         f"Band={selected_band_mode.get()} | "
         f"FreqRange={selected_range_min.get()}-{selected_range_max.get()} Hz | "
@@ -289,7 +396,14 @@ def start_new_session():
     reset_session_stats()
 
     removed_files = []
-    for generated_file in [modified_file, match_file, memorization_file, selected_section_file]:
+    for generated_file in [
+        modified_file,
+        match_file,
+        memorization_file,
+        selected_section_file,
+        trial_reference_file,
+        trial_modified_file,
+    ]:
         if os.path.exists(generated_file):
             os.remove(generated_file)
             removed_files.append(os.path.basename(generated_file))
@@ -595,7 +709,14 @@ def render_memorization_audio():
     source_file = prepare_selected_source_file()
     if not source_file:
         return
-    create_modified_audio(source_file, memorization_file, study_filters)
+    environment_settings = build_automobile_environment_settings() if automobile_environment_is_active() else None
+    create_modified_audio(
+        source_file,
+        memorization_file,
+        study_filters,
+        environment_settings=environment_settings,
+        noise_seed=current_trial_id,
+    )
     set_feedback("Reference example rendered from your current settings.")
 
 
@@ -616,7 +737,14 @@ def render_match_audio():
     source_file = prepare_selected_source_file()
     if not source_file:
         return
-    create_modified_audio(source_file, match_file, guessed_filters)
+    environment_settings = build_automobile_environment_settings() if automobile_environment_is_active() else None
+    create_modified_audio(
+        source_file,
+        match_file,
+        guessed_filters,
+        environment_settings=environment_settings,
+        noise_seed=current_trial_id,
+    )
     set_feedback("Your answer guess example was rendered for comparison.")
 
 
@@ -804,6 +932,8 @@ def reset_trial_for_source_update():
 
     if os.path.exists(modified_file):
         os.remove(modified_file)
+
+    clear_conditioned_trial_files()
 
     reset_pending_detection_answer()
     set_identification_submit_enabled(False)
@@ -1167,6 +1297,9 @@ def create_trial():
     if not source_file:
         return
 
+    environment_settings = build_automobile_environment_settings() if automobile_environment_is_active() else None
+    trial_noise_seed = current_trial_id
+
     trial_params = create_trial_audio(
         source_file,
         modified_file,
@@ -1175,7 +1308,12 @@ def create_trial():
         selected_randomization_mode.get(),
         allow_no_change=(selected_test_mode.get() == TEST_MODE_OPTIONS[0]),
         no_change_probability=selected_no_change_rate.get(),
+        environment_settings=environment_settings,
+        noise_seed=trial_noise_seed,
     )
+
+    if automobile_environment_is_active():
+        ensure_conditioned_trial_files(source_file, trial_noise_seed)
 
     modified_sample = trial_params["modified_sample"]
     current_band_mode = trial_params["band_mode"]
@@ -1199,7 +1337,10 @@ def create_trial():
     update_identification_answer_rows()
     reset_pending_detection_answer()
     set_identification_submit_enabled(False)
-    set_feedback("New trial created. Listen before answering.", MUTED_TEXT_COLOR)
+    if automobile_environment_is_active():
+        set_feedback("New trial created with automobile simulation. Listen before answering.", MUTED_TEXT_COLOR)
+    else:
+        set_feedback("New trial created. Listen before answering.", MUTED_TEXT_COLOR)
 
 def play_sample_a():
     """Play whichever file corresponds to Sample A for this trial."""
@@ -1207,10 +1348,21 @@ def play_sample_a():
     if not reference_preview_file:
         return
 
-    if modified_sample == "A":
-        filename = modified_file
+    if automobile_environment_is_active() and os.path.exists(modified_file):
+        if not (os.path.exists(trial_reference_file) and os.path.exists(trial_modified_file)):
+            ensure_conditioned_trial_files(reference_preview_file, current_trial_id)
+
+    if automobile_environment_is_active() and os.path.exists(trial_reference_file) and os.path.exists(trial_modified_file):
+        conditioned_reference = trial_reference_file
+        conditioned_modified = trial_modified_file
     else:
-        filename = reference_preview_file
+        conditioned_reference = reference_preview_file
+        conditioned_modified = modified_file
+
+    if modified_sample == "A":
+        filename = conditioned_modified
+    else:
+        filename = conditioned_reference
 
     play_audio_file(filename)
 
@@ -1221,10 +1373,21 @@ def play_sample_b():
     if not reference_preview_file:
         return
 
-    if modified_sample == "B":
-        filename = modified_file
+    if automobile_environment_is_active() and os.path.exists(modified_file):
+        if not (os.path.exists(trial_reference_file) and os.path.exists(trial_modified_file)):
+            ensure_conditioned_trial_files(reference_preview_file, current_trial_id)
+
+    if automobile_environment_is_active() and os.path.exists(trial_reference_file) and os.path.exists(trial_modified_file):
+        conditioned_reference = trial_reference_file
+        conditioned_modified = trial_modified_file
     else:
-        filename = reference_preview_file
+        conditioned_reference = reference_preview_file
+        conditioned_modified = modified_file
+
+    if modified_sample == "B":
+        filename = conditioned_modified
+    else:
+        filename = conditioned_reference
 
     play_audio_file(filename)
 
@@ -1380,6 +1543,19 @@ def update_filter_count_controls(*_):
     update_status_label()
 
 
+def sync_automobile_control_states(*_):
+    """Enable profile controls only when automobile monitoring is active."""
+    enabled = selected_automobile_monitoring.get() == "On"
+    state = "normal" if enabled else "disabled"
+
+    set_option_menu_state(automobile_cabin_menu, state)
+    set_option_menu_state(automobile_ac_menu, state)
+    set_option_menu_state(automobile_loudness_menu, state)
+    set_label_state(automobile_cabin_label, enabled)
+    set_label_state(automobile_ac_label, enabled)
+    set_label_state(automobile_loudness_label, enabled)
+
+
 def open_settings_window():
     """Open the dedicated settings window."""
     settings_window.deiconify()
@@ -1479,11 +1655,13 @@ trial_settings_tab = tk.Frame(settings_notebook, bg=settings_window.cget("bg"))
 session_settings_tab = tk.Frame(settings_notebook, bg=settings_window.cget("bg"))
 waveform_settings_tab = tk.Frame(settings_notebook, bg=settings_window.cget("bg"))
 boost_cut_settings_tab = tk.Frame(settings_notebook, bg=settings_window.cget("bg"))
+automobile_settings_tab = tk.Frame(settings_notebook, bg=settings_window.cget("bg"))
 
 settings_notebook.add(trial_settings_tab, text="Trial Settings")
 settings_notebook.add(session_settings_tab, text="Session Tracking")
 settings_notebook.add(waveform_settings_tab, text="Waveform Selector")
 settings_notebook.add(boost_cut_settings_tab, text="Boost / Cut")
+settings_notebook.add(automobile_settings_tab, text="Automobile")
 
 selected_gain = tk.IntVar(value=6)
 selected_band_mode = tk.StringVar(value=BAND_MODES[0])
@@ -1505,6 +1683,11 @@ selected_test_mode = tk.StringVar(value=TEST_MODE_OPTIONS[0])
 selected_no_change_rate = tk.StringVar(value="Random")
 selected_identification_target = tk.StringVar(value=IDENTIFICATION_TARGET_OPTIONS[0])
 selected_section_length = tk.IntVar(value=8)
+selected_automobile_monitoring = tk.StringVar(value=AUTOMOBILE_MONITOR_OPTIONS[0])
+selected_automobile_cabin = tk.StringVar(value=AUTOMOBILE_CABIN_OPTIONS[0])
+selected_automobile_ac = tk.StringVar(value=AUTOMOBILE_AC_OPTIONS[0])
+selected_automobile_loudness = tk.StringVar(value=AUTOMOBILE_LOUDNESS_OPTIONS[0])
+selected_automobile_preset = tk.StringVar(value="City Commute")
 identification_answer_vars = [
     tk.DoubleVar(value=get_frequency_options(BAND_MODES[0])[0])
     for _ in range(MAX_FILTERS_PER_TRIAL)
@@ -1876,6 +2059,76 @@ boost_cut_label = create_section_label(
     pady=(0, 6),
 )
 
+automobile_section = tk.Frame(automobile_settings_tab, bg=automobile_settings_tab.cget("bg"))
+automobile_section.pack(anchor="w", fill="x", padx=20, pady=(18, 0))
+
+automobile_tab_note = tk.Label(
+    automobile_section,
+    text=(
+        "Emulate in-car listening by combining loudness presets with cabin and AC noise. "
+        "When enabled, both trial samples use the same noise seed for fair A/B comparison."
+    ),
+    fg=MUTED_TEXT_COLOR,
+    bg=automobile_section.cget("bg"),
+    justify="left",
+    wraplength=840,
+)
+automobile_tab_note.pack(anchor="w", padx=30, pady=(0, 8))
+
+automobile_label = create_section_label(
+    automobile_section,
+    text="Automobile Listening Simulation",
+    pady=(0, 6),
+)
+
+automobile_monitoring_row, automobile_monitoring_label, automobile_monitoring_menu = create_labeled_option_row(
+    automobile_section,
+    label_text="Automobile Simulation:",
+    variable=selected_automobile_monitoring,
+    options=AUTOMOBILE_MONITOR_OPTIONS,
+)
+
+automobile_cabin_row, automobile_cabin_label, automobile_cabin_menu = create_labeled_option_row(
+    automobile_section,
+    label_text="Cabin Condition:",
+    variable=selected_automobile_cabin,
+    options=AUTOMOBILE_CABIN_OPTIONS,
+)
+
+automobile_ac_row, automobile_ac_label, automobile_ac_menu = create_labeled_option_row(
+    automobile_section,
+    label_text="Air Conditioning:",
+    variable=selected_automobile_ac,
+    options=AUTOMOBILE_AC_OPTIONS,
+)
+
+automobile_loudness_row, automobile_loudness_label, automobile_loudness_menu = create_labeled_option_row(
+    automobile_section,
+    label_text="Loudness Preset:",
+    variable=selected_automobile_loudness,
+    options=AUTOMOBILE_LOUDNESS_OPTIONS,
+)
+
+automobile_quick_preset_label = create_section_label(
+    automobile_section,
+    text="One-Click Preset",
+    font=("Arial", 12),
+    pady=(8, 2),
+)
+
+automobile_preset_row, automobile_preset_label, automobile_preset_menu = create_labeled_option_row(
+    automobile_section,
+    label_text="Preset:",
+    variable=selected_automobile_preset,
+    options=AUTOMOBILE_PRESET_OPTIONS,
+)
+
+automobile_preset_button_frame, (automobile_apply_preset_button,) = create_button_row(
+    automobile_section,
+    [("Apply Preset", apply_automobile_preset, (0, 5))],
+    pady=(0, 10),
+)
+
 session_section = tk.Frame(session_settings_tab, bg=session_settings_tab.cget("bg"))
 session_section.pack(anchor="w", fill="x", padx=20, pady=(18, 0))
 
@@ -2058,9 +2311,15 @@ lock_exact_cut.trace_add("write", sync_constraint_control_states)
 lock_exact_boost.trace_add("write", sync_constraint_control_states)
 selected_gain_direction.trace_add("write", sync_constraint_control_states)
 selected_gain_direction.trace_add("write", update_filter_count_controls)
+selected_automobile_monitoring.trace_add("write", sync_automobile_control_states)
+selected_automobile_monitoring.trace_add("write", invalidate_conditioned_trial_audio)
+selected_automobile_cabin.trace_add("write", invalidate_conditioned_trial_audio)
+selected_automobile_ac.trace_add("write", invalidate_conditioned_trial_audio)
+selected_automobile_loudness.trace_add("write", invalidate_conditioned_trial_audio)
 update_frequency_menu()
 update_filter_count_controls()
 sync_constraint_control_states()
+sync_automobile_control_states()
 update_response_mode()
 set_feedback("No answer checked yet", MUTED_TEXT_COLOR)
 update_session_stats_label()
@@ -2084,6 +2343,10 @@ bind_live_update([
     selected_test_mode,
     selected_no_change_rate,
     selected_identification_target,
+    selected_automobile_monitoring,
+    selected_automobile_cabin,
+    selected_automobile_ac,
+    selected_automobile_loudness,
     selected_band_mode,
     selected_range_min,
     selected_range_max,

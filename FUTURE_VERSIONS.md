@@ -8,6 +8,10 @@ This file tracks planned features, module additions, and platform improvements f
 
 These features extend what the EQ / Band Identification module already does and lay groundwork for every module that follows.
 
+Current status note:
+- Basic automobile listening conditioning is now available in the EQ module (cabin profile, AC profile, loudness preset, and one-click scenario presets).
+- Versioned roadmap items below focus on deepening realism, analysis, and module specialization beyond this baseline.
+
 - **Adaptive difficulty** — automatically tighten or widen the gain/frequency range based on rolling accuracy so the session always stays in the productive zone of effort
 - **Threshold estimation** — formal threshold-seeking procedure (e.g., 2-up / 1-down staircase) to measure the minimum audible change for a given parameter at a given Q and source material
 - **Session history viewer** — in-app review of past CSV exports with per-condition accuracy breakdown (frequency band, gain magnitude, Q, band mode)
@@ -163,7 +167,7 @@ Specialized module using recorded or simulated vehicle noise as the masking stim
 
 - Road-noise convolution with user-supplied impulse responses or noise recordings
 - Wind-noise overlay at selectable speed/level
-- HVAC noise simulation
+- Advanced HVAC noise simulation with speed/fan-band modeling
 - Evaluate how EQ changes affect intelligibility and perceived quality in a noisy cabin environment
 
 ---
