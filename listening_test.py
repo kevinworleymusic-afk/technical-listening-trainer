@@ -42,7 +42,7 @@ modified_file = "modified.wav"
 match_file = "match_guess.wav"
 memorization_file = "memorization.wav"
 selected_section_file = "selected_section.wav"
-reference_file = "Tracy_Chapman_Fast_car.wav"
+reference_file = ""
 
 TEST_MODE_OPTIONS = [
     "Mode 1: Detect Change",
@@ -96,7 +96,7 @@ def update_status_label():
         # During startup, traces can fire before status_label is created.
         return
 
-    selected_file_name = os.path.basename(reference_file)
+    selected_file_name = os.path.basename(reference_file) if reference_file else "None"
 
     selected_state = (
         f"File={selected_file_name} | "
@@ -582,6 +582,8 @@ def render_memorization_audio():
     """Render a study example using the current selected controls."""
     study_filters = build_memorization_filters()
     source_file = prepare_selected_source_file()
+    if not source_file:
+        return
     create_modified_audio(source_file, memorization_file, study_filters)
     set_feedback("Reference example rendered from your current settings.")
 
@@ -601,6 +603,8 @@ def render_match_audio():
         return
 
     source_file = prepare_selected_source_file()
+    if not source_file:
+        return
     create_modified_audio(source_file, match_file, guessed_filters)
     set_feedback("Your answer guess example was rendered for comparison.")
 
@@ -1015,6 +1019,10 @@ def on_waveform_click(event):
 
 def prepare_selected_source_file():
     """Write selected section to disk and return active source audio path."""
+    if not reference_file:
+        set_feedback("Choose an audio file first.", MUTED_TEXT_COLOR)
+        return None
+
     if (
         selected_section_start_seconds is None
         or selected_section_end_seconds is None
@@ -1041,7 +1049,10 @@ def prepare_selected_source_file():
 
 def play_selected_section():
     """Play selected waveform section (or full file when none selected)."""
-    play_audio_file(prepare_selected_source_file())
+    source_file = prepare_selected_source_file()
+    if not source_file:
+        return
+    play_audio_file(source_file)
 
 # =========================
 # Audio Playback Controls
@@ -1058,7 +1069,10 @@ def play_audio_file(filename):
 
 def play_reference():
     """Play the unmodified reference file, replacing any current playback."""
-    play_audio_file(prepare_selected_source_file())
+    source_file = prepare_selected_source_file()
+    if not source_file:
+        return
+    play_audio_file(source_file)
 
 def stop_audio():
     """Stop whichever preview process is currently playing."""
@@ -1139,6 +1153,8 @@ def create_trial():
     }
 
     source_file = prepare_selected_source_file()
+    if not source_file:
+        return
 
     trial_params = create_trial_audio(
         source_file,
@@ -1177,6 +1193,8 @@ def create_trial():
 def play_sample_a():
     """Play whichever file corresponds to Sample A for this trial."""
     reference_preview_file = prepare_selected_source_file()
+    if not reference_preview_file:
+        return
 
     if modified_sample == "A":
         filename = modified_file
@@ -1189,6 +1207,8 @@ def play_sample_a():
 def play_sample_b():
     """Play whichever file corresponds to Sample B for this trial."""
     reference_preview_file = prepare_selected_source_file()
+    if not reference_preview_file:
+        return
 
     if modified_sample == "B":
         filename = modified_file
@@ -1519,7 +1539,7 @@ source_button_frame, (choose_file_button, play_reference_button, play_selected_s
 
 selected_file_label = tk.Label(
     left_panel,
-    text=f"Selected File: {os.path.basename(reference_file)}",
+    text="Selected File: None",
     fg=TEXT_COLOR,
     bg=left_panel.cget("bg")
 )
@@ -2008,7 +2028,6 @@ update_frequency_menu()
 update_filter_count_controls()
 sync_constraint_control_states()
 update_response_mode()
-load_reference_waveform_data()
 set_feedback("No answer checked yet", MUTED_TEXT_COLOR)
 update_session_stats_label()
 
