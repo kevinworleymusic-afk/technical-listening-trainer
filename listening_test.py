@@ -35,6 +35,7 @@ from audio_processing import (
     create_modified_audio,
     create_trial_audio,
     get_frequency_options,
+    resolve_no_change_probability,
     resolve_trial_parameters,
 )
 
@@ -49,7 +50,7 @@ TEST_MODE_OPTIONS = [
     "Mode 2: Identify Setting",
 ]
 IDENTIFICATION_TARGET_OPTIONS = ["Frequency", "Q", "Gain"]
-NO_CHANGE_RATE_OPTIONS = [0, 25, 50, 75]
+NO_CHANGE_RATE_OPTIONS = ["Random", "0%", "25%", "50%", "75%"]
 MAX_FILTERS_PER_TRIAL = 3
 SECTION_LENGTH_OPTIONS = [3, 5, 8, 10, 15, 20, 30]
 
@@ -90,6 +91,16 @@ def format_value_for_status(value):
     return str(value)
 
 
+def format_no_change_rate_for_status():
+    """Format the mode-1 no-change rate for the live status panel."""
+    value = selected_no_change_rate.get()
+    if value in {None, "", "Random"}:
+        return "Random"
+    if isinstance(value, str):
+        return value
+    return f"{value}%"
+
+
 def update_status_label():
     """Render selected controls, lock states, and active trial values."""
     if "status_label" not in globals():
@@ -102,7 +113,7 @@ def update_status_label():
         f"File={selected_file_name} | "
         f"Section={get_section_status_text()} | "
         f"Test={selected_test_mode.get()} | "
-        f"NoChange={selected_no_change_rate.get()}% | "
+        f"NoChange={format_no_change_rate_for_status()} | "
         f"Mode={selected_randomization_mode.get()} | "
         f"Band={selected_band_mode.get()} | "
         f"FreqRange={selected_range_min.get()}-{selected_range_max.get()} Hz | "
@@ -1163,7 +1174,7 @@ def create_trial():
         lock_values,
         selected_randomization_mode.get(),
         allow_no_change=(selected_test_mode.get() == TEST_MODE_OPTIONS[0]),
-        no_change_probability=selected_no_change_rate.get() / 100,
+        no_change_probability=selected_no_change_rate.get(),
     )
 
     modified_sample = trial_params["modified_sample"]
@@ -1491,7 +1502,7 @@ selected_frequency = tk.IntVar(value=1000)
 selected_q = tk.DoubleVar(value=1.0)
 selected_randomization_mode = tk.StringVar(value=RANDOMIZATION_MODES[0])
 selected_test_mode = tk.StringVar(value=TEST_MODE_OPTIONS[0])
-selected_no_change_rate = tk.IntVar(value=50)
+selected_no_change_rate = tk.StringVar(value="Random")
 selected_identification_target = tk.StringVar(value=IDENTIFICATION_TARGET_OPTIONS[0])
 selected_section_length = tk.IntVar(value=8)
 identification_answer_vars = [
@@ -1633,14 +1644,27 @@ trial_button_frame, (sample_a_button, sample_b_button) = create_button_row(
 # visible regardless of how tall the settings section becomes.
 new_trial_button = tk.Button(
     left_panel,
-    text="New Trial",
+    text="Generate New Trial",
     command=create_trial
 )
 new_trial_button.pack(
     anchor="w",
     padx=30,
-    pady=(6, 10)
+    pady=(6, 2)
 )
+
+new_trial_help_label = tk.Label(
+    left_panel,
+    text=(
+        "Creates one fresh trial using the current settings. In Mode 1, a no-change sample "
+        "is used when the mix lands on a no-change outcome, or a random mix is used when Random is selected."
+    ),
+    fg=MUTED_TEXT_COLOR,
+    bg=left_panel.cget("bg"),
+    justify="left",
+    wraplength=760,
+)
+new_trial_help_label.pack(anchor="w", padx=30, pady=(0, 10))
 
 settings_button_row, (open_settings_button,) = create_button_row(
     left_panel,
@@ -1672,10 +1696,20 @@ mode1_options_label = create_section_label(
 
 no_change_rate_row, no_change_rate_label, no_change_rate_menu = create_labeled_option_row(
     response_section,
-    label_text="No-Change Trial Rate:",
+    label_text="Change/No-Change Mix:",
     variable=selected_no_change_rate,
     options=NO_CHANGE_RATE_OPTIONS,
 )
+
+no_change_rate_help_label = tk.Label(
+    response_section,
+    text="Choose a fixed percentage for no-change trials, or leave Random selected for an unpredictable mix each time.",
+    fg=MUTED_TEXT_COLOR,
+    bg=response_section.cget("bg"),
+    justify="left",
+    wraplength=760,
+)
+no_change_rate_help_label.pack(anchor="w", padx=30, pady=(0, 8))
 
 mode2_options_label = create_section_label(
     response_section,

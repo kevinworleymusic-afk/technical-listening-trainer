@@ -353,6 +353,22 @@ def create_modified_audio(input_file, output_file, frequency_or_filters, gain_db
     print("Created:", output_file)
 
 
+def resolve_no_change_probability(no_change_probability):
+    """Normalize no-change probability values for trial generation."""
+    if no_change_probability is None:
+        return None
+
+    if isinstance(no_change_probability, str):
+        normalized = no_change_probability.strip().lower()
+        if normalized in {"random", "randomized", "randomly"}:
+            return None
+        if normalized.endswith("%"):
+            normalized = normalized[:-1]
+        return float(normalized) / 100.0
+
+    return float(no_change_probability) / 100.0 if no_change_probability <= 1 else float(no_change_probability) / 100.0
+
+
 def create_trial_audio(
     input_file,
     output_file,
@@ -365,8 +381,10 @@ def create_trial_audio(
     """Create one frequency-module trial and render audio stimulus."""
     params = resolve_trial_parameters(selected_values, lock_values, randomization_mode)
     modified_sample = random.choice(SAMPLE_OPTIONS)
+    probability = resolve_no_change_probability(no_change_probability)
+    resolved_probability = probability if probability is not None else random.random()
 
-    if allow_no_change and random.random() < no_change_probability:
+    if allow_no_change and random.random() < resolved_probability:
         create_passthrough_audio(input_file, output_file)
         params["modified_sample"] = modified_sample
         params["has_change"] = False

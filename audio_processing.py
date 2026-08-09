@@ -20,5 +20,6 @@ from modules.frequency_module import create_passthrough_audio
 from modules.frequency_module import create_trial_audio
 from modules.frequency_module import get_frequency_options
 from modules.frequency_module import get_practice_gain_options
+from modules.frequency_module import resolve_no_change_probability
 from modules.frequency_module import resolve_trial_parameters
 
